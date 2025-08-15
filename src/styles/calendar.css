@@ -1,0 +1,16 @@
+/* Ajustes mínimos para integrar el calendario al tema */
+.rbc-calendar {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.rbc-toolbar {
+  padding: 8px;
+}
+.rbc-toolbar button {
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+.rbc-event, .rbc-day-slot .rbc-background-event {
+  background-color: #1e40af;
+  border-color: #1e40af;
+}

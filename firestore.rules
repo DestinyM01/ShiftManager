@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ------------------ Utilidades ------------------ */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Robusta: valida que el doc del usuario exista antes de leer role
+    function myRole() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return myRole() == "admin";
+    }
+
+    /* ------------------ employees ------------------ */
+    match /employees/{employeeId} {
+
+      // Leer: el propio usuario o admin
+      allow read: if isSignedIn() && (request.auth.uid == employeeId || isAdmin());
+
+      // Crear:
+      //  A) Auto‑registro: el usuario crea SOLO su doc y SOLO con rol "employee"
+      //  B) Admin: puede crear cualquier empleado con rol admin o employee
+      allow create: if isSignedIn() && (
+        (
+          request.auth.uid == employeeId &&
+          request.resource.data.keys().hasOnly(['name','email','role']) &&
+          request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80 &&
+          request.resource.data.email is string && request.resource.data.email.size() > 3 && request.resource.data.email.size() <= 120 &&
+          request.resource.data.role == "employee"
+        ) ||
+        (
+          isAdmin() &&
+          request.resource.data.keys().hasOnly(['name','email','role']) &&
+          request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80 &&
+          request.resource.data.email is string && request.resource.data.email.size() > 3 && request.resource.data.email.size() <= 120 &&
+          (request.resource.data.role == "admin" || request.resource.data.role == "employee")
+        )
+      );
+
+      // Actualizar: solo admin y solo esos campos
+      allow update: if isSignedIn() && isAdmin() &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['name','email','role']);
+
+      // Eliminar: solo admin
+      allow delete: if isSignedIn() && isAdmin();
+    }
+
+    /* ------------------ shifts ------------------ */
+    match /shifts/{shiftId} {
+
+      // Lectura:
+      // - admin ve todos
+      // - empleado ve solo los suyos (employeeId == su UID)
+      allow read: if isSignedIn() && (
+        isAdmin() || (exists(resource.data.employeeId) && resource.data.employeeId == request.auth.uid)
+      );
+
+      // Crear: solo admin + validación de esquema
+      allow create: if isSignedIn() && isAdmin() &&
+        request.resource.data.keys().hasOnly(['title','start','end','employeeId','createdBy']) &&
+        request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120 &&
+        request.resource.data.start is timestamp &&
+        request.resource.data.end is timestamp &&
+        request.resource.data.end > request.resource.data.start &&
+        request.resource.data.employeeId is string && request.resource.data.employeeId.size() > 0 &&
+        request.resource.data.createdBy == request.auth.uid;
+
+      // Actualizar: solo admin, mismo creador y mismos campos permitidos
+      allow update: if isSignedIn() && isAdmin() &&
+        request.resource.data.keys().hasOnly(['title','start','end','employeeId','createdBy']) &&
+        request.resource.data.createdBy == resource.data.createdBy;
+
+      // Eliminar: solo admin
+      allow delete: if isSignedIn() && isAdmin();
+    }
+  }
+}

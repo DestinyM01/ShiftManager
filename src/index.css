@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ring: #1e40af
+}
+
+body {
+  @apply bg-surface text-white;
+}
+
+input, select, textarea {
+  @apply text-black rounded-md px-3 py-2 outline-none;
+}
+
+.btn {
+  @apply rounded-md px-4 py-2 font-medium bg-accent hover:bg-accent2 transition;
+}
+
+.btn-secondary {
+  @apply rounded-md px-4 py-2 font-medium bg-gray-600 hover:bg-gray-500 transition;
+}
+
+.card {
+  @apply bg-panel rounded-xl p-4 border border-gray-700;
+}
