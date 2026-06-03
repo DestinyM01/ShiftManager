@@ -1,39 +1,31 @@
-import { useEffect, useState } from "react"
-import { auth, db } from "../firebase"
-import { doc, getDoc } from "firebase/firestore"
+import { useEffect } from "react"
 import EmployeeManager from "../components/EmployeeManager.jsx"
 import ShiftCalendar from "../components/ShiftCalendar.jsx"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../hooks/useAuth.js"
 
 export default function Dashboard() {
-  const [profile, setProfile] = useState(null)
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, role, loading } = useAuth()
 
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return navigate("/")
-      const snap = await getDoc(doc(db, "employees", u.uid))
-      if (snap.exists()) setProfile({ id: u.uid, ...snap.data() })
-    })
-    return () => unsub()
-  }, [navigate])
+    if (!loading && !user) navigate("/")
+  }, [user, loading, navigate])
 
-  if (!profile) return <p>Cargando…</p>
+  if (loading) return <p>Cargando…</p>
+  if (!user || !role) return null
 
   return (
     <div className="grid gap-6">
-      {profile.role === "admin" && (
+      {role === "admin" && (
         <section className="card">
           <h2 className="text-xl font-semibold mb-3">Gestión de empleados</h2>
           <EmployeeManager />
         </section>
       )}
-
       <section className="card">
         <h2 className="text-xl font-semibold mb-3">Calendario de turnos</h2>
-        <ShiftCalendar role={profile.role} userId={profile.id} />
+        <ShiftCalendar role={role} userId={user.uid} />
       </section>
     </div>
   )

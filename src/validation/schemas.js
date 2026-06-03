@@ -14,7 +14,7 @@ export const shiftSchema = z.object({
   start: z.coerce.date({ required_error: "Inicio requerido" }),
   end: z.coerce.date({ required_error: "Fin requerido" }),
   // Guardamos el UID del empleado (lo seleccionas por nombre, pero el value es el UID)
-  employeeId: z.string().trim().min(1, "UID de empleado requerido").max(120),
+  employeeId: z.string().trim().min(1, "Selecciona un empleado").max(120),
 }).superRefine((data, ctx) => {
   // Fechas válidas
   if (!(data.start instanceof Date) || isNaN(+data.start)) {

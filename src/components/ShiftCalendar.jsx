@@ -1,236 +1,178 @@
 // src/components/ShiftCalendar.jsx
-import "react-big-calendar/lib/css/react-big-calendar.css";
-import moment from "moment";
-import { Calendar, momentLocalizer } from "react-big-calendar";
-import { useEffect, useMemo, useState } from "react";
-import { db } from "../firebase";
+import "react-big-calendar/lib/css/react-big-calendar.css"
+import { Calendar, dateFnsLocalizer } from "react-big-calendar"
+import { format, parse, startOfWeek, getDay } from "date-fns"
+import { es } from "date-fns/locale"
+import { useEffect, useMemo, useState } from "react"
+import { shiftSchema } from "../validation/schemas"
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import { shiftSchema } from "../validation/schemas";
+  subscribeToShifts,
+  addShift,
+  updateShift,
+  deleteShift,
+} from "../services/shiftService"
+import { getEmployees } from "../services/employeeService"
 
-moment.locale("es");
-const localizer = momentLocalizer(moment);
+const locales = { es }
+const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales })
 
 export default function ShiftCalendar({ role, userId }) {
-  const [events, setEvents] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [form, setForm] = useState({ title: "", start: "", end: "", employeeId: "" });
-  const [editor, setEditor] = useState(null); // {id,title,start,end,employeeId}
-  const [err, setErr] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const shiftsRef = useMemo(() => collection(db, "shifts"), []);
-  const employeesRef = useMemo(() => collection(db, "employees"), []);
+  const [events, setEvents] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [form, setForm] = useState({ title: "", start: "", end: "", employeeId: "" })
+  const [editor, setEditor] = useState(null)
+  const [err, setErr] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const employeeMap = useMemo(() => {
-    const m = new Map();
-    for (const e of employees) m.set(e.id, e);
-    return m;
-  }, [employees]);
+    const m = new Map()
+    for (const e of employees) m.set(e.id, e)
+    return m
+  }, [employees])
 
-  /* ------------ Cargar empleados para el select ------------ */
-  const loadEmployees = async () => {
-    const snap = await getDocs(employeesRef);
-    const list = snap.docs.map((d) => ({
-      id: d.id,
-      name: d.data().name || "(sin nombre)",
-      email: d.data().email || "",
-    }));
-    list.sort((a, b) => a.name.localeCompare(b.name));
-    setEmployees(list);
-  };
-
-  /* ------------ Suscripción en tiempo real a shifts ------------ */
   useEffect(() => {
-    loadEmployees();
+    getEmployees().then(setEmployees).catch(console.error)
 
-    const baseQ =
-      role === "admin"
-        ? query(shiftsRef, orderBy("start", "desc"))
-        : query(shiftsRef, where("employeeId", "==", userId), orderBy("start", "desc"));
-
-    const unsub = onSnapshot(
-      baseQ,
-      (snap) => {
-        const evs = snap.docs.map((d) => {
-          const data = d.data();
-          const start = data.start?.toDate ? data.start.toDate() : new Date(data.start);
-          const end = data.end?.toDate ? data.end.toDate() : new Date(data.end);
-          return {
-            id: d.id,
-            title: data.title,
-            start,
-            end,
-            employeeId: data.employeeId,
-          };
-        });
-        setEvents(evs);
-        setErr("");
-      },
+    const unsub = subscribeToShifts(
+      role,
+      userId,
+      (shifts) => { setEvents(shifts); setErr("") },
       (e) => {
-        console.error(e);
+        console.error(e)
         if (e?.code === "failed-precondition") {
-          setErr(
-            "Falta un índice en Firestore para esta consulta. Ábrelo desde el link azul en la consola del navegador y publícalo."
-          );
+          setErr("Falta un índice en Firestore para esta consulta. Ábrelo desde el link azul en la consola del navegador y publícalo.")
         } else if (e?.code === "permission-denied") {
-          setErr("Permisos insuficientes para leer turnos. Revisa tus reglas y rol.");
+          setErr("Permisos insuficientes para leer turnos. Revisa tus reglas y rol.")
         } else {
-          setErr(e?.message || "No se pudieron cargar los turnos.");
+          setErr(e?.message || "No se pudieron cargar los turnos.")
         }
       }
-    );
+    )
 
-    return () => unsub();
-  }, [role, userId, shiftsRef, employeesRef]);
+    return () => unsub()
+  }, [role, userId])
 
-  /* ------------ Utilidades ------------ */
-  const overlaps = (aStart, aEnd, bStart, bEnd) => aStart < bEnd && bStart < aEnd;
+  const overlaps = (aStart, aEnd, bStart, bEnd) => aStart < bEnd && bStart < aEnd
 
-  /* ------------ Crear turno (admin) ------------ */
   const add = async () => {
-    if (role !== "admin") return;
-    setErr("");
-    setSaving(true);
+    if (role !== "admin") return
+    setErr("")
+    setSaving(true)
     try {
-      const parsed = shiftSchema.safeParse({
-        title: form.title,
-        start: form.start,
-        end: form.end,
-        employeeId: form.employeeId,
-      });
+      const parsed = shiftSchema.safeParse(form)
       if (!parsed.success) {
-        setErr(parsed.error.errors[0].message);
-        return;
+        setErr(parsed.error.errors[0].message)
+        return
       }
 
-      const start = new Date(parsed.data.start);
-      const end = new Date(parsed.data.end);
+      const start = new Date(parsed.data.start)
+      const end = new Date(parsed.data.end)
 
       const hasOverlap = events.some(
-        (ev) =>
-          ev.employeeId === parsed.data.employeeId &&
-          overlaps(start, end, ev.start, ev.end)
-      );
+        (ev) => ev.employeeId === parsed.data.employeeId && overlaps(start, end, ev.start, ev.end)
+      )
       if (hasOverlap) {
-        setErr("El empleado ya tiene un turno solapado en ese rango.");
-        return;
+        setErr("El empleado ya tiene un turno solapado en ese rango.")
+        return
       }
 
-      await addDoc(shiftsRef, {
+      await addShift({
         title: parsed.data.title.trim(),
         start,
         end,
         employeeId: parsed.data.employeeId,
         createdBy: userId,
-      });
-
-      setForm({ title: "", start: "", end: "", employeeId: "" });
+      })
+      setForm({ title: "", start: "", end: "", employeeId: "" })
     } catch (e) {
-      console.error(e);
+      console.error(e)
       setErr(
         e?.code === "permission-denied"
           ? "Permiso denegado al crear el turno (solo admin)."
           : e?.message || "No se pudo crear el turno."
-      );
+      )
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
-  /* ------------ Seleccionar evento para editar (admin) ------------ */
   const onSelectEvent = (ev) => {
-    if (role !== "admin") return; // empleados no editan
+    if (role !== "admin") return
     setEditor({
       id: ev.id,
       title: ev.title,
-      start: moment(ev.start).format("YYYY-MM-DDTHH:mm"),
-      end: moment(ev.end).format("YYYY-MM-DDTHH:mm"),
+      start: format(ev.start, "yyyy-MM-dd'T'HH:mm"),
+      end: format(ev.end, "yyyy-MM-dd'T'HH:mm"),
       employeeId: ev.employeeId,
-    });
-  };
+    })
+  }
 
-  /* ------------ Guardar edición (admin) ------------ */
   const saveEdit = async () => {
-    if (!editor) return;
-    setErr("");
-    setSaving(true);
+    if (!editor) return
+    setErr("")
+    setSaving(true)
     try {
       const parsed = shiftSchema.safeParse({
         title: editor.title,
         start: editor.start,
         end: editor.end,
         employeeId: editor.employeeId,
-      });
+      })
       if (!parsed.success) {
-        setErr(parsed.error.errors[0].message);
-        return;
+        setErr(parsed.error.errors[0].message)
+        return
       }
 
-      const start = new Date(parsed.data.start);
-      const end = new Date(parsed.data.end);
+      const start = new Date(parsed.data.start)
+      const end = new Date(parsed.data.end)
 
-      // solapamiento (excluye el propio)
       const hasOverlap = events.some(
         (ev) =>
           ev.id !== editor.id &&
           ev.employeeId === parsed.data.employeeId &&
           overlaps(start, end, ev.start, ev.end)
-      );
+      )
       if (hasOverlap) {
-        setErr("El empleado ya tiene un turno solapado en ese rango.");
-        return;
+        setErr("El empleado ya tiene un turno solapado en ese rango.")
+        return
       }
 
-      await updateDoc(doc(db, "shifts", editor.id), {
+      await updateShift(editor.id, {
         title: parsed.data.title.trim(),
         start,
         end,
         employeeId: parsed.data.employeeId,
-      });
-      setEditor(null);
+      })
+      setEditor(null)
     } catch (e) {
-      console.error(e);
+      console.error(e)
       setErr(
         e?.code === "permission-denied"
           ? "Permiso denegado al actualizar (solo admin)."
           : e?.message || "No se pudo actualizar el turno."
-      );
+      )
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
-  /* ------------ Eliminar turno (admin) ------------ */
   const remove = async (id) => {
-    setErr("");
+    setErr("")
     try {
-      await deleteDoc(doc(db, "shifts", id));
-      if (editor?.id === id) setEditor(null);
+      await deleteShift(id)
+      if (editor?.id === id) setEditor(null)
     } catch (e) {
-      console.error(e);
+      console.error(e)
       setErr(
         e?.code === "permission-denied"
           ? "Permiso denegado al eliminar (solo admin)."
           : e?.message || "No se pudo eliminar el turno."
-      );
+      )
     }
-  };
+  }
 
-  /* ------------ Render ------------ */
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Controles superiores (solo admin) */}
       {role === "admin" && (
         <div className="flex flex-wrap gap-3 mb-4">
           <input
@@ -239,21 +181,18 @@ export default function ShiftCalendar({ role, userId }) {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
-
           <input
             type="datetime-local"
             className="w-full sm:w-64 h-11 px-4 rounded-lg border border-gray-300 text-gray-900"
             value={form.start}
             onChange={(e) => setForm({ ...form, start: e.target.value })}
           />
-
           <input
             type="datetime-local"
             className="w-full sm:w-64 h-11 px-4 rounded-lg border border-gray-300 text-gray-900"
             value={form.end}
             onChange={(e) => setForm({ ...form, end: e.target.value })}
           />
-
           <select
             className="w-full sm:w-80 h-11 px-3 rounded-lg border border-gray-300 text-gray-900"
             value={form.employeeId}
@@ -266,7 +205,6 @@ export default function ShiftCalendar({ role, userId }) {
               </option>
             ))}
           </select>
-
           <button
             className="btn disabled:opacity-60 w-full sm:w-auto"
             onClick={add}
@@ -279,13 +217,12 @@ export default function ShiftCalendar({ role, userId }) {
 
       {err && <p className="text-red-400 mb-3">{err}</p>}
 
-      {/* Layout: calendario + editor */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Calendario ocupa 2/3 en pantallas grandes */}
         <div className="lg:col-span-2 min-w-0">
           <div className="card overflow-hidden">
             <Calendar
               localizer={localizer}
+              culture="es"
               events={events}
               startAccessor="start"
               endAccessor="end"
@@ -304,25 +241,22 @@ export default function ShiftCalendar({ role, userId }) {
               }}
               components={{
                 event: ({ event }) => {
-                  const emp = employeeMap.get(event.employeeId);
+                  const emp = employeeMap.get(event.employeeId)
                   const label =
                     role === "admin"
-                      ? `${event.title}${
-                          emp ? ` — ${emp.name}${emp.email ? ` (${emp.email})` : ""}` : ""
-                        }`
-                      : event.title;
+                      ? `${event.title}${emp ? ` — ${emp.name}${emp.email ? ` (${emp.email})` : ""}` : ""}`
+                      : event.title
                   return (
                     <div className="text-xs truncate">
                       <strong>{label}</strong>
                     </div>
-                  );
+                  )
                 },
               }}
             />
           </div>
         </div>
 
-        {/* Editor lateral con scroll y ancho controlado (solo admin) */}
         {role === "admin" && (
           <aside className="min-w-0">
             <div className="card h-[520px] overflow-auto">
@@ -385,5 +319,5 @@ export default function ShiftCalendar({ role, userId }) {
         )}
       </div>
     </div>
-  );
+  )
 }

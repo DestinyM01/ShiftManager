@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
-import { db } from "../firebase"
-import { collection, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore"
 import { employeeSchema } from "../validation/schemas.js"
+import { getEmployees, addEmployee, deleteEmployee } from "../services/employeeService.js"
 
 export default function EmployeeManager() {
   const [employees, setEmployees] = useState([])
@@ -9,8 +8,11 @@ export default function EmployeeManager() {
   const [err, setErr] = useState("")
 
   const load = async () => {
-    const snap = await getDocs(collection(db, "employees"))
-    setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    try {
+      setEmployees(await getEmployees())
+    } catch (e) {
+      setErr(e?.message || "No se pudieron cargar los empleados.")
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -19,22 +21,39 @@ export default function EmployeeManager() {
     setErr("")
     const v = employeeSchema.safeParse(form)
     if (!v.success) return setErr(v.error.errors[0].message)
-    await addDoc(collection(db, "employees"), v.data)
-    setForm({ name: "", email: "", role: "employee" })
-    load()
+    try {
+      await addEmployee(v.data)
+      setForm({ name: "", email: "", role: "employee" })
+      load()
+    } catch (e) {
+      setErr(
+        e?.code === "permission-denied"
+          ? "Permiso denegado al agregar empleado."
+          : e?.message || "No se pudo agregar el empleado."
+      )
+    }
   }
 
   const removeEmp = async (id) => {
-    await deleteDoc(doc(db, "employees", id))
-    load()
+    setErr("")
+    try {
+      await deleteEmployee(id)
+      load()
+    } catch (e) {
+      setErr(
+        e?.code === "permission-denied"
+          ? "Permiso denegado al eliminar empleado."
+          : e?.message || "No se pudo eliminar el empleado."
+      )
+    }
   }
 
   return (
     <div>
       <div className="flex gap-2 mb-3">
-        <input placeholder="Nombre" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
-        <input placeholder="Email" value={form.email} onChange={e=>setForm({...form, email:e.target.value})}/>
-        <select value={form.role} onChange={e=>setForm({...form, role:e.target.value})} className="text-black rounded-md px-3 py-2">
+        <input placeholder="Nombre" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+        <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+        <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="text-black rounded-md px-3 py-2">
           <option value="employee">Empleado</option>
           <option value="admin">Admin</option>
         </select>
@@ -53,7 +72,7 @@ export default function EmployeeManager() {
               <td>{e.email}</td>
               <td>{e.role}</td>
               <td className="text-right">
-                <button className="btn-secondary" onClick={()=>removeEmp(e.id)}>Eliminar</button>
+                <button className="btn-secondary" onClick={() => removeEmp(e.id)}>Eliminar</button>
               </td>
             </tr>
           ))}

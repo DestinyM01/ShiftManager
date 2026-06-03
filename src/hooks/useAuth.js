@@ -5,6 +5,7 @@ import { doc, getDoc } from "firebase/firestore"
 export function useAuth() {
   const [user, setUser] = useState(null)
   const [role, setRole] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (u) => {
@@ -12,15 +13,17 @@ export function useAuth() {
       if (u) {
         try {
           const snap = await getDoc(doc(db, "employees", u.uid))
-          if (snap.exists()) setRole(snap.data().role || null)
-          else setRole(null)
-        } catch { setRole(null) }
+          setRole(snap.exists() ? (snap.data().role || null) : null)
+        } catch {
+          setRole(null)
+        }
       } else {
         setRole(null)
       }
+      setLoading(false)
     })
     return () => unsub()
   }, [])
 
-  return { user, role }
+  return { user, role, loading }
 }

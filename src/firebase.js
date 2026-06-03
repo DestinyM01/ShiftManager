@@ -30,5 +30,6 @@ export const analytics = await isSupported().then(
   (supported) => (supported ? getAnalytics(app) : null)
 );
 
-// Log para verificar que el entorno cargó bien
-console.log("✅ Firebase inicializado correctamente:", firebaseConfig.projectId);
+if (import.meta.env.DEV) {
+  console.log("✅ Firebase inicializado correctamente:", firebaseConfig.projectId);
+}
