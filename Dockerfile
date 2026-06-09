@@ -1,9 +1,10 @@
 # ---------- Build ----------
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Instalar deps primero (cache más eficiente)
-COPY package*.json ./
+# .npmrc aplica ignore-scripts (mitigación supply-chain)
+COPY package*.json .npmrc ./
 RUN npm ci
 
 # Build args para las credenciales de Firebase (no quedan en la capa si evitas imprimirlas)

@@ -6,16 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+# least privilege: this workflow only needs to read the repo
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # actions pinned to commit SHAs so a compromised tag can't inject code
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-      - run: npm ci
+      - name: Install (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
       - name: Type check
         run: npm run type-check
       - name: Run tests
