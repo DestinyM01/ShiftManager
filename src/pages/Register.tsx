@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"
 import { setDoc, doc } from "firebase/firestore"
 import { auth, db } from "../firebase"
-import { authRegisterSchema } from "../validation/schemas"
-import { useAuth } from "../hooks/useAuth"
+import { authRegisterSchema, zodErrorMap } from "../validation/schemas"
 import { useToast } from "../context/ToastContext"
 
 export default function Register() {
@@ -12,30 +11,29 @@ export default function Register() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
-  const { user, loading } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (!loading && user) navigate("/dashboard")
-  }, [user, loading, navigate])
-
-  const validate = () => {
+  const validateField = (field: keyof typeof form) => {
     const res = authRegisterSchema.safeParse(form)
-    if (!res.success) {
-      const map: Record<string, string> = {}
-      res.error.errors.forEach((e) => { if (e.path[0]) map[String(e.path[0])] = e.message })
-      setErrors(map)
-      return false
-    }
-    setErrors({})
-    return true
+    setErrors((prev) => {
+      const next = { ...prev }
+      const msg = res.success ? undefined : zodErrorMap(res.error)[field]
+      if (msg) next[field] = msg
+      else delete next[field]
+      return next
+    })
   }
 
-  const onChange = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }))
+  const onChange = (k: keyof typeof form, v: string) => setForm((prev) => ({ ...prev, [k]: v }))
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    const res = authRegisterSchema.safeParse(form)
+    if (!res.success) {
+      setErrors(zodErrorMap(res.error))
+      return
+    }
+    setErrors({})
     try {
       setSubmitting(true)
       const cred = await createUserWithEmailAndPassword(auth, form.email, form.password)
@@ -63,28 +61,59 @@ export default function Register() {
       <h1 className="text-2xl font-semibold mb-4">Registro</h1>
       <form onSubmit={submit} className="grid gap-3" noValidate>
         <div>
-          <input placeholder="Nombre" autoComplete="name" required maxLength={80} value={form.name}
-            onChange={(e) => onChange("name", e.target.value)} onBlur={validate} />
+          <input
+            placeholder="Nombre"
+            autoComplete="name"
+            required
+            maxLength={80}
+            value={form.name}
+            onChange={(e) => onChange("name", e.target.value)}
+            onBlur={() => validateField("name")}
+          />
           {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
         </div>
         <div>
-          <input placeholder="Email" type="email" autoComplete="email" required maxLength={120} value={form.email}
-            onChange={(e) => onChange("email", e.target.value)} onBlur={validate} />
+          <input
+            placeholder="Email"
+            type="email"
+            autoComplete="email"
+            required
+            maxLength={120}
+            value={form.email}
+            onChange={(e) => onChange("email", e.target.value)}
+            onBlur={() => validateField("email")}
+          />
           {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
         </div>
         <div>
-          <input placeholder="Contraseña" type="password" autoComplete="new-password" required maxLength={72} value={form.password}
-            onChange={(e) => onChange("password", e.target.value)} onBlur={validate} />
+          <input
+            placeholder="Contraseña"
+            type="password"
+            autoComplete="new-password"
+            required
+            maxLength={72}
+            value={form.password}
+            onChange={(e) => onChange("password", e.target.value)}
+            onBlur={() => validateField("password")}
+          />
           {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
           <p className="text-xs text-gray-500 mt-1">Mínimo 8 caracteres, 1 mayúscula, 1 minúscula y 1 número.</p>
         </div>
         <div>
-          <input placeholder="Confirmar contraseña" type="password" autoComplete="new-password" required maxLength={72} value={form.confirm}
-            onChange={(e) => onChange("confirm", e.target.value)} onBlur={validate} />
+          <input
+            placeholder="Confirmar contraseña"
+            type="password"
+            autoComplete="new-password"
+            required
+            maxLength={72}
+            value={form.confirm}
+            onChange={(e) => onChange("confirm", e.target.value)}
+            onBlur={() => validateField("confirm")}
+          />
           {errors.confirm && <p className="text-red-400 text-sm mt-1">{errors.confirm}</p>}
         </div>
         {errors.submit && <p className="text-red-400">{errors.submit}</p>}
-        <button className="btn" disabled={submitting || Object.keys(errors).length > 0}>
+        <button className="btn" disabled={submitting}>
           {submitting ? "Creando..." : "Registrarme"}
         </button>
       </form>

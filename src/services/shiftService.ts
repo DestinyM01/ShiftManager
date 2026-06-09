@@ -10,6 +10,7 @@ import {
   updateDoc,
   where,
   type DocumentData,
+  type FirestoreError,
 } from "firebase/firestore"
 import type { Shift } from "../types"
 
@@ -30,14 +31,14 @@ export function subscribeToShifts(
   role: string,
   userId: string,
   onUpdate: (shifts: Shift[]) => void,
-  onError: (e: unknown) => void
+  onError: (e: FirestoreError) => void
 ): () => void {
   const q =
     role === "admin"
       ? query(shiftsRef, orderBy("start", "desc"))
       : query(shiftsRef, where("employeeId", "==", userId), orderBy("start", "desc"))
 
-  return onSnapshot(q, (snap) => onUpdate(snap.docs.map((d) => docToShift(d.id, d.data()))), onError as (e: Error) => void)
+  return onSnapshot(q, (snap) => onUpdate(snap.docs.map((d) => docToShift(d.id, d.data()))), onError)
 }
 
 export async function addShift(data: Omit<Shift, "id">): Promise<void> {

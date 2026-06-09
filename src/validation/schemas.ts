@@ -1,4 +1,4 @@
-import { z } from "zod"
+import { z, type ZodError } from "zod"
 
 export const employeeSchema = z.object({
   name: z.string().trim().min(1, "Nombre requerido").max(80, "Máximo 80 caracteres"),
@@ -53,3 +53,15 @@ export const authRegisterSchema = z
 export const emailOnlySchema = z.object({
   email: z.string().email("Email inválido").max(120),
 })
+
+// First message per field, keyed by field name — shared by the auth forms.
+export function zodErrorMap(error: ZodError): Record<string, string> {
+  const map: Record<string, string> = {}
+  for (const issue of error.errors) {
+    const key = issue.path[0]
+    if (key !== undefined && map[String(key)] === undefined) {
+      map[String(key)] = issue.message
+    }
+  }
+  return map
+}

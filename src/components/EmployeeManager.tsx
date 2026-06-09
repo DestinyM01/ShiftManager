@@ -1,25 +1,19 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { employeeSchema } from "../validation/schemas"
-import { addEmployee, deleteEmployee, getEmployees, updateEmployee } from "../services/employeeService"
+import { addEmployee, deleteEmployee, updateEmployee } from "../services/employeeService"
+import { mapFirestoreError } from "../services/firestoreErrors"
 import { useToast } from "../context/ToastContext"
 import type { Employee, UserRole } from "../types"
 
-export default function EmployeeManager() {
-  const [employees, setEmployees] = useState<Employee[]>([])
+interface EmployeeManagerProps {
+  employees: Employee[]
+}
+
+export default function EmployeeManager({ employees }: EmployeeManagerProps) {
   const [form, setForm] = useState({ name: "", email: "", role: "employee" as UserRole })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: "", role: "employee" as UserRole })
   const { toast } = useToast()
-
-  const load = async () => {
-    try {
-      setEmployees(await getEmployees())
-    } catch {
-      toast("No se pudieron cargar los empleados.", "error")
-    }
-  }
-
-  useEffect(() => { load() }, [])
 
   const add = async () => {
     const v = employeeSchema.safeParse(form)
@@ -27,11 +21,9 @@ export default function EmployeeManager() {
     try {
       await addEmployee(v.data)
       setForm({ name: "", email: "", role: "employee" })
-      load()
       toast("Empleado agregado.", "success")
     } catch (e) {
-      const err = e as { code?: string; message?: string }
-      toast(err?.code === "permission-denied" ? "Permiso denegado." : err?.message || "No se pudo agregar el empleado.", "error")
+      toast(mapFirestoreError(e, "No se pudo agregar el empleado."), "error")
     }
   }
 
@@ -45,22 +37,18 @@ export default function EmployeeManager() {
     try {
       await updateEmployee(id, editForm)
       setEditingId(null)
-      load()
       toast("Empleado actualizado.", "success")
     } catch (e) {
-      const err = e as { code?: string; message?: string }
-      toast(err?.code === "permission-denied" ? "Permiso denegado." : err?.message || "No se pudo actualizar.", "error")
+      toast(mapFirestoreError(e, "No se pudo actualizar el empleado."), "error")
     }
   }
 
   const removeEmp = async (id: string) => {
     try {
       await deleteEmployee(id)
-      load()
       toast("Empleado eliminado.", "success")
     } catch (e) {
-      const err = e as { code?: string; message?: string }
-      toast(err?.code === "permission-denied" ? "Permiso denegado." : err?.message || "No se pudo eliminar.", "error")
+      toast(mapFirestoreError(e, "No se pudo eliminar el empleado."), "error")
     }
   }
 
@@ -121,7 +109,11 @@ export default function EmployeeManager() {
                 <td className="py-2 font-medium">{emp.name}</td>
                 <td className="text-gray-400">{emp.email}</td>
                 <td>
-                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${emp.role === "admin" ? "bg-accent text-white" : "bg-gray-700 text-gray-300"}`}>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded font-medium ${
+                      emp.role === "admin" ? "bg-accent text-white" : "bg-gray-700 text-gray-300"
+                    }`}
+                  >
                     {emp.role}
                   </span>
                 </td>

@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { auth } from "../firebase"
-import { authLoginSchema } from "../validation/schemas"
-import { useAuth } from "../hooks/useAuth"
+import { authLoginSchema, zodErrorMap } from "../validation/schemas"
 import { useToast } from "../context/ToastContext"
 
 export default function Login() {
@@ -11,30 +10,30 @@ export default function Login() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
-  const { user, loading } = useAuth()
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (!loading && user) navigate("/dashboard")
-  }, [user, loading, navigate])
-
-  const validate = () => {
+  // only surface the error for the field the user just left
+  const validateField = (field: keyof typeof form) => {
     const res = authLoginSchema.safeParse(form)
-    if (!res.success) {
-      const map: Record<string, string> = {}
-      res.error.errors.forEach((e) => { if (e.path[0]) map[String(e.path[0])] = e.message })
-      setErrors(map)
-      return false
-    }
-    setErrors({})
-    return true
+    setErrors((prev) => {
+      const next = { ...prev }
+      const msg = res.success ? undefined : zodErrorMap(res.error)[field]
+      if (msg) next[field] = msg
+      else delete next[field]
+      return next
+    })
   }
 
-  const onChange = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }))
+  const onChange = (k: keyof typeof form, v: string) => setForm((prev) => ({ ...prev, [k]: v }))
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    const res = authLoginSchema.safeParse(form)
+    if (!res.success) {
+      setErrors(zodErrorMap(res.error))
+      return
+    }
+    setErrors({})
     try {
       setSubmitting(true)
       await signInWithEmailAndPassword(auth, form.email, form.password)
@@ -60,7 +59,7 @@ export default function Login() {
             maxLength={120}
             value={form.email}
             onChange={(e) => onChange("email", e.target.value)}
-            onBlur={validate}
+            onBlur={() => validateField("email")}
           />
           {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
         </div>
@@ -73,11 +72,11 @@ export default function Login() {
             maxLength={72}
             value={form.password}
             onChange={(e) => onChange("password", e.target.value)}
-            onBlur={validate}
+            onBlur={() => validateField("password")}
           />
           {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
         </div>
-        <button className="btn" disabled={submitting || Object.keys(errors).length > 0}>
+        <button className="btn" disabled={submitting}>
           {submitting ? "Entrando..." : "Entrar"}
         </button>
       </form>

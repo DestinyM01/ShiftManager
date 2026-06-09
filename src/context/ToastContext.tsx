@@ -14,12 +14,15 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
 
+const MAX_TOASTS = 5
+let toastSeq = 0
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
   const toast = useCallback((message: string, type: ToastType = "info") => {
-    const id = Date.now()
-    setToasts((prev) => [...prev, { id, message, type }])
+    const id = ++toastSeq
+    setToasts((prev) => [...prev, { id, message, type }].slice(-MAX_TOASTS))
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500)
   }, [])
 
